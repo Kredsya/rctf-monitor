@@ -1,0 +1,28 @@
+name: Test and package
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '${{ matrix.python }}'
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: python -m pip install build
+      - run: PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m unittest discover -s .github/tests -v
+      - run: python packaging/build.py
+      - run: |
+          python -m venv /tmp/rctf-wheel
+          /tmp/rctf-wheel/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/rctf-wheel/bin/rctf-monitor --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.python }}
+          path: dist/*

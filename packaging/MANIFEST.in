@@ -1,0 +1,5 @@
+include README.md pyproject.toml setup.py
+include install.py rctf-monitor.py
+include helpers/22.sh helpers/25.sh
+
+prune .github

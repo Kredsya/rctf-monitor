@@ -1,0 +1,13 @@
+.rctf-monitor-local/
+.rctf-monitor/
+workspace/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+test-results/
+.coverage
+.env
+.env.*
