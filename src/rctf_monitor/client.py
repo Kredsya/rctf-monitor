@@ -54,7 +54,7 @@ class RCTFClient:
             raise ValueError("Only rCTF API routes are accepted")
         if time.monotonic() < self.retry_until:
             raise ApiError("rate_limited", 429)
-        headers = {"Accept": "application/json", "User-Agent": "rctf-monitor/0.1.0"}
+        headers = {"Accept": "application/json", "User-Agent": "rctf-monitor/0.1.1"}
         if authenticated:
             if not self.auth_token:
                 self.login()
@@ -140,7 +140,7 @@ class RCTFClient:
         try:
             return self.opener.open(
                 urllib.request.Request(
-                    url, headers={"User-Agent": "rctf-monitor/0.1.0"}
+                    url, headers={"User-Agent": "rctf-monitor/0.1.1"}
                 ),
                 timeout=15,
             )

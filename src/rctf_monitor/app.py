@@ -9,7 +9,7 @@ from .archives import extract, require_space
 from .client import ApiError, RCTFClient
 
 
-from .assets import REQUIRED_HELPERS, DEFAULT_AGENTS, find_helpers
+from .assets import REQUIRED_HELPERS, DEFAULT_AGENTS, find_helpers, safe_directory_name
 
 
 from . import __version__
@@ -334,19 +334,6 @@ def fit_panel(lines: list[str], rows: int, width: int, color: str) -> list[str]:
         "", [paint(f"… {omitted} more rows · enlarge terminal", GRAY)], width, color
     )[1]
     return lines[: rows - 2] + [notice, lines[-1]]
-
-
-def safe_directory_name(value: object) -> str:
-    name = re.sub(r"\s+", "_", str(value).strip())
-    # Helpers send a quoted cd command to worker shells. Do not let remote
-    # titles introduce shell substitutions or terminate those quotes.
-    name = re.sub(r'[/\\"$`\x00-\x1f\x7f]', "_", name)
-    if name in {"", ".", ".."}:
-        name = "unnamed_challenge"
-    encoded = name.encode("utf-8")
-    if len(encoded) > 220:
-        name = encoded[:220].decode("utf-8", errors="ignore").rstrip("._ ")
-    return name or "unnamed_challenge"
 
 
 def safe_file_name(value: str, fallback: str) -> str:
@@ -1464,6 +1451,10 @@ class Monitor:
             raise ApiError("invalid_challenges")
         solved = {str(item["id"]) for item in team["solves"]}
         result = {}
+        used_directories = {
+            str(c.get("directory", "")).casefold()
+            for c in self.previous.get("challenges", {}).values()
+        }
         for item in raw:
             if not isinstance(item, dict) or not item.get("id"):
                 raise ApiError("invalid_challenge")
@@ -1475,6 +1466,20 @@ class Monitor:
                 raise ApiError("invalid_challenge_id")
             title = str(item.get("name") or identifier)
             old = self.previous.get("challenges", {}).get(identifier, {})
+            directory = old.get("directory")
+            if not directory:
+                base = safe_directory_name(title)
+                if base.startswith("."):
+                    base = "challenge_" + base.lstrip(".")
+                directory, suffix = base, 2
+                while (
+                    directory.casefold() in used_directories
+                    or (BASE_DIR / directory).exists()
+                    or (BASE_DIR / directory).is_symlink()
+                ):
+                    directory = f"{base}_{suffix}"
+                    suffix += 1
+            used_directories.add(directory.casefold())
             result[identifier] = {
                 "id": identifier,
                 "name": title,
@@ -1483,12 +1488,7 @@ class Monitor:
                 "solved": identifier in solved,
                 "description": str(item.get("description") or ""),
                 "files": self.normalize_files(item),
-                "directory": old.get("directory")
-                or identifier
-                + "_"
-                + safe_directory_name(title)
-                .encode("utf-8")[:180]
-                .decode("utf-8", errors="ignore"),
+                "directory": directory,
             }
         return {"team": team, "challenges": result}
 
@@ -2463,7 +2463,9 @@ def configure(path=None):
     BASE_URL = config["url"]
     RCTFClient(BASE_URL, TOKEN)  # Validate before constructing local paths.
     TITLE = str(config.get("name") or "rCTF Monitor")
-    BASE_DIR = (profile.parent / config.get("root", "../workspace")).resolve()
+    BASE_DIR = (
+        profile.parent / config.get("root", "../workspace/" + safe_directory_name(TITLE))
+    ).resolve()
     identity = hashlib.sha256((BASE_URL + "\0" + TOKEN).encode()).hexdigest()[:16]
     STATE_DIR = BASE_DIR / ".rctf-monitor" / identity
     STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)

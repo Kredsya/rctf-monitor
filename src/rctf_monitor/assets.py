@@ -1,5 +1,6 @@
 """Required workspace assets, shared by checkout setup and installed packages."""
 
+import re
 from pathlib import Path
 
 REQUIRED_HELPERS = ("22.sh", "25.sh")
@@ -43,3 +44,16 @@ def validate_checkout(root: Path) -> None:
             raise ValueError(
                 f"{name} 실행 권한이 없습니다. chmod +x helpers/22.sh helpers/25.sh 후 다시 설치하세요."
             )
+
+
+def safe_directory_name(value: object) -> str:
+    name = re.sub(r"\s+", "_", str(value).strip())
+    # Helpers send a quoted cd command to worker shells. Do not let remote
+    # titles introduce shell substitutions or terminate those quotes.
+    name = re.sub(r'[/\\"$`\x00-\x1f\x7f]', "_", name)
+    if name in {"", ".", ".."}:
+        name = "unnamed_challenge"
+    encoded = name.encode("utf-8")
+    if len(encoded) > 220:
+        name = encoded[:220].decode("utf-8", errors="ignore").rstrip("._ ")
+    return name or "unnamed_challenge"

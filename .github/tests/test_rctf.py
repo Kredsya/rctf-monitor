@@ -822,3 +822,55 @@ class LargeScreenContracts(Scenario):
             )
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertEqual(json.loads(result.stdout)["unresolved_attachments"], 1)
+
+
+class WorkspaceLayoutTests(Scenario):
+    def test_fresh_setup_creates_competition_root(self):
+        from rctf_monitor.installer import main
+        profile = self.root / 'new-private/profile.json'
+        with patch('getpass.getpass', return_value=self.fixture.team_token), contextlib.redirect_stdout(io.StringIO()):
+            main(['--url', self.fixture.url, '--profile', str(profile)])
+        config = json.loads(profile.read_text())
+        self.assertEqual(config['root'], '../workspace/Test_CTF')
+        m.configure(profile)
+        self.monitor.executor.shutdown()
+        self.monitor = m.Monitor(self.state, self.stop)
+        self.sync()
+        expected = self.root / 'workspace/Test_CTF/UUID_problem/chall/deploy/file.bin'
+        self.assertTrue(expected.is_file())
+        self.assertFalse((self.root / ('workspace/' + ID + '_UUID_problem')).exists())
+
+    def test_names_only_and_rename_keeps_directory(self):
+        current = self.sync()
+        self.assertEqual(current['challenges'][ID]['directory'], 'UUID_problem')
+        self.fixture.name = 'New name'
+        self.assertEqual(self.sync()['challenges'][ID]['directory'], 'UUID_problem')
+
+    def test_same_name_does_not_overwrite_other_problem(self):
+        real = self.monitor.client.request_json
+        def request(path, *args, **kwargs):
+            result = real(path, *args, **kwargs)
+            if path == '/api/v1/challs':
+                return result + [dict(result[0], id='second-id')]
+            return result
+        with patch.object(self.monitor.client, 'request_json', side_effect=request):
+            current = self.sync()
+            self.assertEqual({c['directory'] for c in current['challenges'].values()}, {'UUID_problem', 'UUID_problem_2'})
+            self.assertEqual(self.sync()['challenges']['second-id']['directory'], 'UUID_problem_2')
+
+    def test_existing_untracked_work_is_not_adopted(self):
+        existing = m.BASE_DIR / 'UUID_problem'
+        existing.mkdir(parents=True)
+        (existing / 'notes.txt').write_text('keep')
+        self.assertEqual(self.sync()['challenges'][ID]['directory'], 'UUID_problem_2')
+        self.assertEqual((existing / 'notes.txt').read_text(), 'keep')
+        self.assertFalse((existing / 'chall').exists())
+
+    def test_setup_again_keeps_selected_competition_root(self):
+        from rctf_monitor.installer import main
+        config = json.loads(self.profile.read_text())
+        config['root'] = '../workspace/Existing_Competition'
+        private_json(self.profile, config)
+        with patch('getpass.getpass', return_value=self.fixture.team_token), contextlib.redirect_stdout(io.StringIO()):
+            main(['--url', self.fixture.url, '--profile', str(self.profile)])
+        self.assertEqual(json.loads(self.profile.read_text())['root'], config['root'])

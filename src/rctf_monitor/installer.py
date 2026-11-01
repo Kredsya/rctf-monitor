@@ -1,9 +1,10 @@
 """Interactive, standard-library-only configuration for checkout and wheel users."""
 
 import argparse
+import json
 import getpass
 from pathlib import Path
-from .assets import find_helpers, REQUIRED_HELPERS
+from .assets import find_helpers, REQUIRED_HELPERS, safe_directory_name
 from .client import RCTFClient
 from .config import default_profile, parse_target, private_json
 
@@ -34,14 +35,20 @@ def main(argv=None):
     )
     if not isinstance(me, dict) or not me.get("id") or not isinstance(config, dict):
         raise ValueError("지원되지 않는 rCTF 응답입니다.")
+    name = str(config.get("ctfName") or "rCTF Competition")
+    root = "../workspace/" + safe_directory_name(name)
+    if args.profile.exists():
+        previous = json.loads(args.profile.read_text())
+        if previous.get("url") == url and previous.get("root"):
+            root = previous["root"]
     # Validate network and assets before touching an existing configuration.
     private_json(args.profile.parent / "credentials.json", {"team_token": token})
     private_json(
         args.profile,
         {
             "url": url,
-            "name": str(config.get("ctfName") or "rCTF Monitor"),
-            "root": "../workspace",
+            "name": name,
+            "root": root,
             "credentials_file": "credentials.json",
         },
     )
